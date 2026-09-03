@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  git_commit_as.sh -m "commit message" -n "Your Name" -e "you@example.com" [options]
+
+Required:
+  -m, --message MESSAGE       Commit message
+  -n, --name NAME             Git author/committer name
+  -e, --email EMAIL           Git author/committer email
+
+Optional:
+  -p, --push                  Also push after committing
+  -r, --remote REMOTE         Remote to push to (default: origin)
+  -b, --branch BRANCH         Branch to push to (default: current branch)
+      --allow-empty           Allow empty commit
+  -h, --help                  Show this help
+
+Examples:
+  ./git_commit_as.sh -m "fix: update Dockerfile" -n "Arthur Zhang" -e "arthur@example.com"
+
+  ./git_commit_as.sh \
+    -m "feat: add vllm stage" \
+    -n "Arthur Zhang" \
+    -e "arthur@example.com" \
+    --push --remote origin --branch main
+EOF
+}
+
+MESSAGE=""
+GIT_NAME="artzha"
+GIT_EMAIL="arthurz@cs.utexas.edu"
+DO_PUSH=0
+REMOTE="origin"
+BRANCH=""
+ALLOW_EMPTY=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--message)
+      MESSAGE="${2:-}"
+      shift 2
+      ;;
+    -n|--name)
+      GIT_NAME="${2:-}"
+      shift 2
+      ;;
+    -e|--email)
+      GIT_EMAIL="${2:-}"
+      shift 2
+      ;;
+    -p|--push)
+      DO_PUSH=1
+      shift
+      ;;
+    -r|--remote)
+      REMOTE="${2:-}"
+      shift 2
+      ;;
+    -b|--branch)
+      BRANCH="${2:-}"
+      shift 2
+      ;;
+    --allow-empty)
+      ALLOW_EMPTY=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$MESSAGE" || -z "$GIT_NAME" || -z "$GIT_EMAIL" ]]; then
+  echo "Error: --message, --name, and --email are required." >&2
+  usage
+  exit 1
+fi
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "Error: not inside a git repository." >&2
+  exit 1
+fi
+
+if [[ -z "$BRANCH" ]]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+fi
+
+if [[ "$BRANCH" == "HEAD" ]]; then
+  echo "Error: detached HEAD. Specify --branch explicitly." >&2
+  exit 1
+fi
+
+if [[ $ALLOW_EMPTY -eq 0 ]]; then
+  if [[ -z "$(git status --porcelain)" ]]; then
+    echo "Nothing to commit." >&2
+    exit 1
+  fi
+fi
+
+echo "Staging all changes..."
+git add -A
+
+echo "Creating commit as: $GIT_NAME <$GIT_EMAIL>"
+if [[ $ALLOW_EMPTY -eq 1 ]]; then
+  git -c user.name="$GIT_NAME" -c user.email="$GIT_EMAIL" \
+    commit --allow-empty -m "$MESSAGE"
+else
+  git -c user.name="$GIT_NAME" -c user.email="$GIT_EMAIL" \
+    commit -m "$MESSAGE"
+fi
+
+if [[ $DO_PUSH -eq 1 ]]; then
+  echo "Pushing to $REMOTE $BRANCH ..."
+  git push "$REMOTE" "$BRANCH"
+fi
+
+echo "Done."

@@ -1,0 +1,20 @@
+name: navstack
+root: ~/argo_ws
+pre_window: ./container shell
+
+windows:
+  - simulator:
+      layout: main-vertical
+      panes:
+        # - ros2 launch spot_driver spot_driver.launch.py config_file:=/home/ros/cotnav_ws/params/spot_driver.yaml
+        # - ros2 launch ironback_description description.launch.py
+        # - ros2 run k4a_ros depth_to_lidar --points=false --depth=true
+        # - ros2 launch spot_velodyne velodyne.launch.py device_ip:=192.168.50.201 launch_image_publishers:=False
+        # - ros2 launch vectornav vectornav.launch.py rate_divisor:=4 baud:=921600
+        # - ros2 run joystick joystick_node --config=/home/ros/cotnav_ws/src/joystick/joystick/config/joystick.lua
+        # - ros2 launch av_recorder recorder.launch.py config_file:=/home/ros/cotnav_ws/src/av_recorder/config/recorder.yaml
+        # - ros2 launch monitor ops_gui.launch.py
+        # - ros2 run webviz websocket
+        - 'pip install -e src/foresight_public && ros2 launch legged_deployment vllm_server.launch.py'
+        # - 'pip install -e src/foresight_public && ros2 launch legged_deployment deployment.launch.py'
+        # - ros2 run graph_navigation navigation

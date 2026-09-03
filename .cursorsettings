@@ -1,0 +1,4 @@
+All commands must be executed in the prebuild docker container. To run this
+container, run the commands with the container prefix:
+
+`./container cmd 'COMMAND TO RUN HERE'`

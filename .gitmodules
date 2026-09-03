@@ -1,0 +1,3 @@
+[submodule "external/librealsense"]
+	path = external/librealsense
+	url = https://github.com/nathantsoi/librealsense
