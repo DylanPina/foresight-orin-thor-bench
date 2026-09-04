@@ -31,9 +31,6 @@ data/**
 # Models
 checkpoints/
 
-# inner project code
-src/
-
 # SuperOdom generated artifacts
 maps/superodom/*
 !maps/superodom/.gitkeep
