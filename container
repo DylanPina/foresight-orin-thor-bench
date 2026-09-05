@@ -8,7 +8,7 @@ _GID=$(id -g)
 _UID=$(id -u)
 _UNAME=$(id -un)
 
-USAGE="$0 [command: build|start|stop|restart|shell|cmd|rm|push] [--name container_name] [--repo dockerhub_user/repo] [--tag tag] [--dockerfile docker/Dockerfile|docker/Dockerfile_trtllm]"
+USAGE="$0 [command: build|start|stop|restart|shell|cmd|rm|push] [--name container_name] [--repo dockerhub_user/repo] [--tag tag] [--dockerfile path]"
 
 DOCKER_BUILDKIT=1
 export BUILDAH_FORMAT=docker
@@ -20,7 +20,7 @@ CMD_TO_RUN=""
 HOST_FLAGS=""
 DOCKER_REPO=""
 DOCKER_TAG=""
-DOCKERFILE_REL=""
+DOCKERFILE_REL="docker/Dockerfile.orin"
 IS_PODMAN=0
 if docker --version 2>/dev/null | grep -qi "podman"; then
   IS_PODMAN=1
@@ -40,10 +40,14 @@ fi
 
 # Check if we're on a Jetson
 ISJETSON=0
+JETSON_POWER_MODE_NAME=""
+JETSON_POWER_MODE_ID=""
 if command -v nvpmodel &> /dev/null; then
     #echo "This is likely a NVIDIA Jetson device."
     ISJETSON=1
     HOST_FLAGS+=" --runtime nvidia --privileged --ipc=host --pid host --cap-add SYS_PTRACE "
+    JETSON_POWER_MODE_NAME=$(nvpmodel -q 2>/dev/null | sed -n 's/^NV Power Mode: //p' | head -n1)
+    JETSON_POWER_MODE_ID=$(nvpmodel -q 2>/dev/null | tail -n1)
 else
     echo ''
     #echo "This does not appear to be a NVIDIA Jetson device (nvpmodel not found)."
@@ -152,17 +156,18 @@ if [ ! -f "$HOME/.bash_profile" ]; then
     touch "$HOME/.bash_profile"
 fi
 
-if [ -z "$DOCKERFILE_REL" ]; then
-  # Optional env override for convenience in scripts:
-  #   CONTAINER_DOCKERFILE=docker/Dockerfile_trtllm ./container build ...
-  DOCKERFILE_REL="${CONTAINER_DOCKERFILE:-docker/Dockerfile}"
-fi
+# Keep model downloads across disposable containers in the ignored workspace
+# data directory. This avoids inheriting ownership from a host-global cache.
+mkdir -p "$ROOT/data/huggingface"
+
 CONTAINER_FILE="$ROOT/$DOCKERFILE_REL"
 if [[ ! -f "$CONTAINER_FILE" ]]; then
   echo "Dockerfile not found: $CONTAINER_FILE"
   echo $USAGE
   exit 1
 fi
+echo "Host architecture: $ARCH ($DETECTED_PLATFORM)"
+echo "Dockerfile: $DOCKERFILE_REL"
 _DISPLAY="${DISPLAY-:0}"
 
 RUNNING_CONTAINER=$(docker container ls -q --filter name=$CONTAINER_NAME)
@@ -345,6 +350,12 @@ dockerrun() {
   fi
   if [ -n "$ORIN_IP" ]; then
     env_flags="$env_flags -e ORIN_IP=$ORIN_IP"
+  fi
+  if [ -n "$JETSON_POWER_MODE_NAME" ]; then
+    env_flags="$env_flags -e JETSON_POWER_MODE_NAME=$JETSON_POWER_MODE_NAME"
+  fi
+  if [ -n "$JETSON_POWER_MODE_ID" ]; then
+    env_flags="$env_flags -e JETSON_POWER_MODE_ID=$JETSON_POWER_MODE_ID"
   fi
   while true; do
     if docker run --rm \

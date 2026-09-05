@@ -1,0 +1,26 @@
+# JetPack 6 / Jetson Orin vLLM benchmark image.
+# This NVIDIA-AI-IOT image is built for Orin's integrated GPU (sm_87).
+ARG BASE_IMAGE_ARM64=ghcr.io/nvidia-ai-iot/vllm:latest-jetson-orin@sha256:817f0f940d2d9c9067d861d2118d7bf58c40873598f0c35e19c8516269ebc4bd
+
+FROM ${BASE_IMAGE_ARM64} AS base_arm64
+
+ARG username=ros
+
+LABEL com.foresight.platform="jetson-orin" \
+      com.foresight.jetpack="6" \
+      com.foresight.cuda-arch="sm_87" \
+      com.foresight.vllm-version="0.19.0"
+
+ENV CUDA_MODULE_LOADING=LAZY \
+    PYTORCH_ALLOC_CONF=expandable_segments:False \
+    VLLM_WORKER_MULTIPROC_METHOD=spawn \
+    FORESIGHT_CONTAINER_BASE=ghcr.io/nvidia-ai-iot/vllm:latest-jetson-orin \
+    HOME=/home/${username} \
+    HF_HOME=/home/${username}/.cache/huggingface \
+    HUGGINGFACE_HUB_CACHE=/home/${username}/.cache/huggingface \
+    TRANSFORMERS_CACHE=/home/${username}/.cache/huggingface
+
+WORKDIR /home/${username}/argo_ws
+
+ENTRYPOINT []
+CMD ["/bin/bash", "-l"]

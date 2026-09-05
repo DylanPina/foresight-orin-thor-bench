@@ -15,6 +15,6 @@ windows:
         # - ros2 launch av_recorder recorder.launch.py config_file:=/home/ros/cotnav_ws/src/av_recorder/config/recorder.yaml
         # - ros2 launch monitor ops_gui.launch.py
         # - ros2 run webviz websocket
-        - 'pip install -e src/foresight_public && ros2 launch legged_deployment vllm_server.launch.py'
-        # - 'pip install -e src/foresight_public && ros2 launch legged_deployment deployment.launch.py'
+        - 'pip install -e foresight_public && ros2 launch legged_deployment vllm_server.launch.py'
+        # - 'pip install -e foresight_public && ros2 launch legged_deployment deployment.launch.py'
         # - ros2 run graph_navigation navigation
