@@ -5,11 +5,14 @@ ARG BASE_IMAGE_ARM64=ghcr.io/nvidia-ai-iot/vllm:latest-jetson-orin@sha256:817f0f
 FROM ${BASE_IMAGE_ARM64} AS base_arm64
 
 ARG username=ros
+ARG VLLM_PACKAGE_VERSION=0.19.0+cu126
+ARG TRANSFORMERS_PACKAGE_VERSION=5.5.3
 
 LABEL com.foresight.platform="jetson-orin" \
       com.foresight.jetpack="6" \
       com.foresight.cuda-arch="sm_87" \
-      com.foresight.vllm-version="0.19.0"
+      com.foresight.vllm-version="${VLLM_PACKAGE_VERSION}" \
+      com.foresight.transformers-version="${TRANSFORMERS_PACKAGE_VERSION}"
 
 ENV CUDA_MODULE_LOADING=LAZY \
     PYTORCH_ALLOC_CONF=expandable_segments:False \
@@ -18,7 +21,19 @@ ENV CUDA_MODULE_LOADING=LAZY \
     HOME=/home/${username} \
     HF_HOME=/home/${username}/.cache/huggingface \
     HUGGINGFACE_HUB_CACHE=/home/${username}/.cache/huggingface \
-    TRANSFORMERS_CACHE=/home/${username}/.cache/huggingface
+    TRANSFORMERS_PACKAGE=transformers==${TRANSFORMERS_PACKAGE_VERSION} \
+    TRANSFORMERS_VERSION=${TRANSFORMERS_PACKAGE_VERSION}
+
+# The upstream image pins Transformers 4.57, but its Gemma 4 implementation
+# requires the Gemma4Processor introduced in Transformers 5.5. Retain all of
+# the base image's JetPack constraints except that obsolete Transformers pin.
+RUN sed '/^transformers==/d' /opt/jetson-containers/pip-constraints.txt \
+          > /tmp/foresight-pip-constraints.txt \
+ && PIP_CONSTRAINT=/tmp/foresight-pip-constraints.txt \
+        PIP_VERBOSE=0 \
+        python -m pip install --upgrade \
+          "transformers==${TRANSFORMERS_PACKAGE_VERSION}" \
+ && python -c "import vllm; from transformers import Gemma4Processor; assert vllm.__version__.startswith('0.19.0')"
 
 WORKDIR /home/${username}/argo_ws
 

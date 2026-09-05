@@ -156,7 +156,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Number of full configured-workload passes (default: 1)",
     )
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--max-tokens", type=int, default=256)
+    parser.add_argument("--max-tokens", type=int, default=512)
     parser.add_argument("--max-model-len", type=int, default=2560)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.5)
     parser.add_argument(

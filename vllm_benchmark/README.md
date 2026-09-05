@@ -23,6 +23,10 @@ or `stop` to stop it:
 ./container stop --name vllm-thor
 ```
 
+The Orin image retains its JetPack 6 / CUDA 12.6 build of vLLM 0.19.0 and
+overlays Transformers 5.5.3. Gemma 4 support in this vLLM release requires the
+`Gemma4Processor` that is absent from Transformers 4.x.
+
 ## Run the benchmark
 
 Inside the container, run the benchmark from the mounted repository root:

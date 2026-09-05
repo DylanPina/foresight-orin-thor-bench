@@ -39,15 +39,26 @@ def percentile(values: Iterable[float | None], quantile: float) -> float | None:
 def parse_tegrastats_line(line: str) -> dict[str, float]:
     """Extract comparable instantaneous readings from a tegrastats line."""
     result: dict[str, float] = {}
-    patterns = {
-        "ram_used_mb": r"\bRAM\s+(\d+)/\d+MB",
-        "gpu_power_mw": r"\bVDD_GPU\s+(\d+)mW/",
-        "board_power_mw": r"\bVIN\s+(\d+)mW/",
+    patterns: dict[str, tuple[str, ...]] = {
+        "ram_used_mb": (r"\bRAM\s+(\d+)/\d+MB",),
+        # Thor exposes VDD_GPU, while Orin exposes the combined GPU/SoC rail.
+        "gpu_power_mw": (
+            r"\bVDD_GPU\s+(\d+(?:\.\d+)?)mW(?:/|\b)",
+            r"\bVDD_GPU_SOC\s+(\d+(?:\.\d+)?)mW(?:/|\b)",
+        ),
+        # Prefer Thor's total input rail when both it and VIN_SYS_5V0 exist.
+        # Orin only exposes VIN_SYS_5V0 in tegrastats.
+        "board_power_mw": (
+            r"\bVIN\s+(\d+(?:\.\d+)?)mW(?:/|\b)",
+            r"\bVIN_SYS_5V0\s+(\d+(?:\.\d+)?)mW(?:/|\b)",
+        ),
     }
-    for key, pattern in patterns.items():
-        match = re.search(pattern, line)
-        if match:
-            result[key] = float(match.group(1))
+    for key, alternatives in patterns.items():
+        for pattern in alternatives:
+            match = re.search(pattern, line)
+            if match:
+                result[key] = float(match.group(1))
+                break
     temperatures = [
         float(value)
         for value in re.findall(
@@ -335,7 +346,6 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "measured_images": total_images,
         "total_inference_seconds": total_duration,
         "effective_time_per_image_ms": total_duration * 1000.0 / total_images if total_images else None,
-        "image_throughput_images_s": total_images / total_duration if total_duration else None,
         "aggregate_output_throughput_tokens_s": total_output_tokens / total_duration if total_duration else None,
         "output_throughput_tokens_s_p50": p("output_throughput_tokens_s", 0.50),
         "decode_throughput_tokens_s_p50": p("decode_throughput_tokens_s", 0.50),
@@ -374,7 +384,7 @@ def write_reports(output_dir: Path, payload: dict[str, Any]) -> None:
         "model", "status", "ttft_ms_p50", "ttft_ms_p95", "e2e_latency_ms_p50",
         "e2e_latency_ms_p95", "measured_batches", "measured_images",
         "total_inference_seconds", "effective_time_per_image_ms",
-        "image_throughput_images_s", "aggregate_output_throughput_tokens_s",
+        "aggregate_output_throughput_tokens_s",
         "output_throughput_tokens_s_p50", "decode_throughput_tokens_s_p50",
         "tpot_ms_p50", "torch_peak_allocated_mb", "torch_peak_reserved_mb",
         "system_ram_used_mb_peak", "gpu_power_w_average", "gpu_power_w_peak",
@@ -402,21 +412,22 @@ def write_reports(output_dir: Path, payload: dict[str, Any]) -> None:
         f"- Images: {len(payload['images'])} of {payload['config']['dataset_size']} at {IMAGE_SIZE[0]}×{IMAGE_SIZE[1]}",
         f"- Workload: {batch_count} batches × {images_per_batch} images per batch",
         "- Structured output: " + (
-            "JSON Schema (compact JSON, backend selected by vLLM)"
+            "JSON Schema"
             if structured_output else "disabled"
         ),
         "",
-        "| Model | Status | TTFT p50/p95 (ms) | E2E p50 (ms) | Images/s | Output tok/s | Decode tok/s | Peak RAM (MB) | GPU W avg/peak | Board W avg/peak | Max °C |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Model | Status | TTFT p50/p95 (ms) | E2E p50/p95 (ms) | Output tok/s | Decode tok/s | Peak RAM (MB) | GPU W avg/peak | Board W avg/peak | Max °C |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for result in payload["models"]:
         summary = result.get("summary", {})
         if result["status"] == "ok":
             lines.append(
-                "| {model} | ok | {ttft50}/{ttft95} | {e2e} | {images} | {output} | {decode} | {ram} | {gpuavg}/{gpupeak} | {boardavg}/{boardpeak} | {temp} |".format(
+                "| {model} | ok | {ttft50}/{ttft95} | {e2e50}/{e2e95} | {output} | {decode} | {ram} | {gpuavg}/{gpupeak} | {boardavg}/{boardpeak} | {temp} |".format(
                     model=result["model"], ttft50=_fmt(summary.get("ttft_ms_p50")),
-                    ttft95=_fmt(summary.get("ttft_ms_p95")), e2e=_fmt(summary.get("e2e_latency_ms_p50")),
-                    images=_fmt(summary.get("image_throughput_images_s")),
+                    ttft95=_fmt(summary.get("ttft_ms_p95")),
+                    e2e50=_fmt(summary.get("e2e_latency_ms_p50")),
+                    e2e95=_fmt(summary.get("e2e_latency_ms_p95")),
                     output=_fmt(summary.get("aggregate_output_throughput_tokens_s")),
                     decode=_fmt(summary.get("decode_throughput_tokens_s_p50")),
                     ram=_fmt(summary.get("system_ram_used_mb_peak"), 0),
@@ -426,6 +437,6 @@ def write_reports(output_dir: Path, payload: dict[str, Any]) -> None:
                 )
             )
         else:
-            lines.append(f"| {result['model']} | error |  |  |  |  |  |  |  |  |  |")
+            lines.append(f"| {result['model']} | error |  |  |  |  |  |  |  |  |")
             lines.extend(["", f"Error for `{result['model']}`: `{result.get('error', 'unknown')}`"])
     (output_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
