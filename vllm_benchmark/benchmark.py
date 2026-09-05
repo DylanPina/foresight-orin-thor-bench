@@ -28,6 +28,7 @@ from .utils import (
 )
 from .config import (
     DATASET_SIZE,
+    MODEL_FAMILY_PROFILES,
     build_run_config,
     parse_args,
     validate_batch_settings,
@@ -165,9 +166,21 @@ def run_model(model: str, config: dict[str, Any]) -> dict[str, Any]:
     }
     if config.get("kv_cache_memory_bytes") is not None:
         engine_kwargs["kv_cache_memory_bytes"] = config["kv_cache_memory_bytes"]
-    if model.lower().startswith("google/gemma-4"):
-        engine_kwargs["mm_processor_kwargs"] = {"max_soft_tokens": 280}
-        engine_kwargs["attention_config"] = {"backend": "TRITON_ATTN"}
+    model_family = next(
+        (
+            family
+            for family, profile in MODEL_FAMILY_PROFILES.items()
+            if any(
+                model.lower().startswith(prefix)
+                for prefix in profile["prefixes"]
+            )
+        ),
+        None,
+    )
+    if model_family is not None:
+        engine_kwargs.update(
+            MODEL_FAMILY_PROFILES[model_family].get("engine_kwargs", {})
+        )
 
     llm = None
     try:
@@ -211,6 +224,7 @@ def run_model(model: str, config: dict[str, Any]) -> dict[str, Any]:
         warnings = sorted({run["warning"] for run in runs if run.get("warning")})
         return {
             "model": model,
+            "model_family": model_family,
             "status": "ok",
             "runtime": "vllm",
             "versions": {

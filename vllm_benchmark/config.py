@@ -11,6 +11,30 @@ DEFAULT_MODELS = (
     "Qwen/Qwen3.5-2B",
     "google/gemma-4-E2B-it",
 )
+MODEL_FAMILY_PROFILES: dict[str, dict[str, Any]] = {
+    "qwen3.5": {
+        "prefixes": ("qwen/qwen3.5-",),
+        "engine_kwargs": {},
+    },
+    "gemma4": {
+        "prefixes": ("google/gemma-4",),
+        "engine_kwargs": {
+            "mm_processor_kwargs": {"max_soft_tokens": 280},
+
+            # ---
+            # Gemma 4 uses two attention head dimensions:
+            #   - Sliding-attention layers: 256
+            #   - Full-attention layers: 523
+            # 
+            # When the backend is auto, vLLM selects FlashAttention. 
+            # It attempts FA4, Thor build reports that FA4 cannot handle Gemma’s required 512-dimensional heads. 
+            # It then falls back to FA2, which supports at most 256, causing the following runtime error:
+            # `FlashAttention forward only supports head dimension at most 256`
+            # ---
+            "attention_config": {"backend": "TRITON_ATTN"}, # FlashAttention forward only supports head dimension at most 256 (https://github.com/vllm-project/vllm/issues/40677)
+        },
+    },
+}
 COCO_BASE_URL = "https://s3.amazonaws.com/images.cocodataset.org/val2017"
 COCO_IMAGE_NAMES = (
     "000000000139.jpg", "000000000285.jpg", "000000000632.jpg", "000000000724.jpg",
