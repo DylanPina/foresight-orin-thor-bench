@@ -4,6 +4,8 @@
 [submodule "jetson-device-skills"]
 	path = jetson-device-skills
 	url = https://github.com/NVIDIA-AI-IOT/jetson-device-skills.git
-[submodule "src/foresight_public"]
-	path = src/foresight_public
 	url = git@github.com:artzha/foresight_public.git
+[submodule "src/amrl_msgs"]
+	path = src/amrl_msgs
+	url = git@github.com:ut-amrl/amrl_msgs.git
+	branch = artzha/foresight
