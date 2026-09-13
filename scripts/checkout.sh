@@ -38,6 +38,7 @@ clone_or_pull ros2_avrecorder git@github.com:ut-amrl/joystick.git joystick
 clone_or_pull ros2_migration git@github.com:ut-amrl/graph_navigation.git graph_navigation
 clone_or_pull arthz/foresight git@github.com:ut-amrl/webviz.git webviz
 clone_or_pull master git@github.com:artzha/av_recorder.git
+clone_or_pull main git@github.com:artzha/foresight_public.git foresight_public
 # clone_or_pull amrl_ros2 git@github.com:ut-amrl/elevation_mapping_cupy.git elevation_mapping_cupy
 
 # livox_ros_driver2 uses package_ROS2.xml for ROS2, but colcon/ament requires

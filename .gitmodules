@@ -1,10 +1,6 @@
-[submodule "external/librealsense"]
-	path = external/librealsense
-	url = https://github.com/nathantsoi/librealsense
 [submodule "jetson-device-skills"]
 	path = jetson-device-skills
 	url = https://github.com/NVIDIA-AI-IOT/jetson-device-skills.git
-	url = git@github.com:artzha/foresight_public.git
 [submodule "src/amrl_msgs"]
 	path = src/amrl_msgs
 	url = git@github.com:ut-amrl/amrl_msgs.git
