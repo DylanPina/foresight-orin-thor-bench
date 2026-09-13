@@ -35,7 +35,7 @@ RUN sed '/^transformers==/d' /opt/jetson-containers/pip-constraints.txt \
           "transformers==${TRANSFORMERS_PACKAGE_VERSION}" \
  && python -c "import vllm; from transformers import Gemma4Processor; assert vllm.__version__.startswith('0.19.0')"
 
-WORKDIR /home/${username}/argo_ws
+WORKDIR /home/${username}/foresight_ws
 
 ENTRYPOINT []
 CMD ["/bin/bash", "-l"]

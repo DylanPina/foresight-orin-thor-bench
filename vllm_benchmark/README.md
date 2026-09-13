@@ -32,7 +32,7 @@ overlays Transformers 5.5.3. Gemma 4 support in this vLLM release requires the
 Inside the container, run the benchmark from the mounted repository root:
 
 ```bash
-cd /home/ros/argo_ws
+cd /home/ros/foresight_ws
 
 # After the models have been downloaded from Hugging Face, prevent network
 # requests and require locally cached model files.

@@ -22,7 +22,7 @@ ENV CUDA_MODULE_LOADING=LAZY \
     HUGGINGFACE_HUB_CACHE=/home/${username}/.cache/huggingface \
     TRANSFORMERS_CACHE=/home/${username}/.cache/huggingface
 
-WORKDIR /home/${username}/argo_ws
+WORKDIR /home/${username}/foresight_ws
 
 ENTRYPOINT []
 CMD ["/bin/bash", "-l"]
