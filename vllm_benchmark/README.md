@@ -34,18 +34,26 @@ Inside the container, run the benchmark from the mounted repository root:
 ```bash
 cd /home/ros/argo_ws
 
-# After the models have been downloaded from HF
-HF_HUB_OFFLINE=1 # Prevents HTTP network requests to the Hugging Face Hub and enforces locally cached models
+# After the models have been downloaded from Hugging Face, prevent network
+# requests and require locally cached model files.
+export HF_HUB_OFFLINE=1
 
 python3 -m vllm_benchmark.benchmark
 ```
+
+With no `--models` argument, the benchmark runs these four models:
+
+- `Qwen/Qwen3.5-0.8B`
+- `Qwen/Qwen3.5-2B`
+- `google/gemma-4-E2B-it`
+- `ut-amrl/foresight-qwen3vl-2b-sft`
 
 ### Configuration
 
 ```bash
 python3 -m vllm_benchmark.benchmark \
-  --models Qwen/Qwen3.5-0.8B \
-  --batches 2 \
+  --models ut-amrl/foresight-qwen3vl-2b-sft \
+  --batches 1 \
   --images-per-batch 4 \
   --runs 1
 ```

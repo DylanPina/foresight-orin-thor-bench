@@ -10,10 +10,18 @@ DEFAULT_MODELS = (
     "Qwen/Qwen3.5-0.8B",
     "Qwen/Qwen3.5-2B",
     "google/gemma-4-E2B-it",
+    "ut-amrl/foresight-qwen3vl-2b-sft",
 )
 MODEL_FAMILY_PROFILES: dict[str, dict[str, Any]] = {
     "qwen3.5": {
         "prefixes": ("qwen/qwen3.5-",),
+        "engine_kwargs": {},
+    },
+    "qwen3vl": {
+        "prefixes": (
+            "qwen/qwen3-vl-",
+            "ut-amrl/foresight-qwen3vl-",
+        ),
         "engine_kwargs": {},
     },
     "gemma4": {
