@@ -38,7 +38,7 @@ cd /home/ros/foresight_ws
 # requests and require locally cached model files.
 export HF_HUB_OFFLINE=1
 
-python3 -m vllm_benchmark.benchmark
+python3 -m benchmark.vllm.benchmark
 ```
 
 With no `--models` argument, the benchmark runs these four models:
@@ -51,7 +51,7 @@ With no `--models` argument, the benchmark runs these four models:
 ### Configuration
 
 ```bash
-python3 -m vllm_benchmark.benchmark \
+python3 -m benchmark.vllm.benchmark \
   --models ut-amrl/foresight-qwen3vl-2b-sft \
   --batches 1 \
   --images-per-batch 4 \
@@ -60,3 +60,9 @@ python3 -m vllm_benchmark.benchmark \
 
 Use `--help` to list all options. Results are written to
 `data/benchmarks/vllm/<timestamp>/` as JSON, CSV, logs, and a Markdown summary.
+
+## Comparing with TensorRT Edge-LLM
+
+[`benchmark/edgellm`](../edgellm/README.md) runs the same workload on NVIDIA's
+TensorRT Edge-LLM runtime; see the [top-level README](../README.md) for the
+comparison command.

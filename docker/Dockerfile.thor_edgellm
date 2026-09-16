@@ -1,0 +1,75 @@
+# JetPack 7 / Jetson Thor TensorRT Edge-LLM benchmark image.
+ARG BASE_IMAGE_ARM64=nvcr.io/nvidia/tensorrt:25.11-py3@sha256:6a507190873a87ee42205d5b2392491078aca971b1b25cda5f1053d72366bb89
+ARG BASE_IMAGE_AMD64=nvcr.io/nvidia/tensorrt:25.11-py3
+ARG BASE_STAGE_NAME=base_arm64
+
+FROM ${BASE_IMAGE_ARM64} AS base_arm64
+FROM ${BASE_IMAGE_AMD64} AS base_amd64
+FROM ${BASE_STAGE_NAME} AS final
+
+ARG username=ros
+ARG EDGELLM_VERSION=v0.10.1
+ARG EDGELLM_ROOT=/opt/TensorRT-Edge-LLM
+ARG EDGELLM_VENV=/opt/edgellm-venv
+# CUDA toolkit version of the base image; must match the JetPack 7.0/7.1 host.
+ARG CUDA_CTK_VERSION=13.0
+
+LABEL com.foresight.platform="jetson-thor" \
+      com.foresight.jetpack="7" \
+      com.foresight.cuda-arch="sm_110" \
+      com.foresight.edgellm-version="${EDGELLM_VERSION}"
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cmake \
+        build-essential \
+        git \
+        python3-venv \
+        libopenmpi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# C++ runtime: ONNX -> engine builders and the llm_inference benchmark binary.
+# The JetPack 7.0/7.1 Thor configuration from the Edge-LLM installation guide.
+# The base image bundles CMake 3.24 in /usr/local/bin, which rejects the sm_110a
+# architecture the Thor target selects; use the apt CMake (>= 3.27) instead.
+RUN git clone --branch "${EDGELLM_VERSION}" --depth 1 --recurse-submodules --shallow-submodules \
+        https://github.com/NVIDIA/TensorRT-Edge-LLM.git "${EDGELLM_ROOT}" \
+ && cd "${EDGELLM_ROOT}" \
+ && mkdir -p build && cd build \
+ && /usr/bin/cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DTRT_PACKAGE_DIR=/usr \
+        -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64_linux_toolchain.cmake \
+        -DEMBEDDED_TARGET=jetson-thor \
+        -DCUDA_CTK_VERSION="${CUDA_CTK_VERSION}" \
+        -DENABLE_CUTE_DSL=ALL \
+ && make -j"$(nproc)" \
+ && test -x examples/llm/llm_build \
+ && test -x examples/llm/llm_inference \
+ && test -x examples/multimodal/visual_build
+
+# Python export environment. Export runs on the CPU, so the pinned torch and
+# torchvision resolve to CPU wheels instead of CUDA builds. The "tools" extra is
+# required rather than "export": the visual-encoder export path imports
+# nvidia-modelopt even for unquantized FP16 checkpoints.
+RUN python3 -m venv "${EDGELLM_VENV}" \
+ && "${EDGELLM_VENV}/bin/pip" install --no-cache-dir --upgrade pip \
+ && "${EDGELLM_VENV}/bin/pip" install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        -e "${EDGELLM_ROOT}[tools]" \
+        pillow \
+ && "${EDGELLM_VENV}/bin/tensorrt-edgellm-export" --help > /dev/null
+
+ENV CUDA_MODULE_LOADING=LAZY \
+    EDGELLM_ROOT=${EDGELLM_ROOT} \
+    EDGELLM_VENV=${EDGELLM_VENV} \
+    PATH=${EDGELLM_VENV}/bin:${EDGELLM_ROOT}/build/examples/llm:${EDGELLM_ROOT}/build/examples/multimodal:${PATH} \
+    FORESIGHT_CONTAINER_BASE=nvcr.io/nvidia/tensorrt:25.11-py3 \
+    HOME=/home/${username} \
+    HF_HOME=/home/${username}/.cache/huggingface \
+    HUGGINGFACE_HUB_CACHE=/home/${username}/.cache/huggingface
+
+WORKDIR /home/${username}/foresight_ws
+
+ENTRYPOINT []
+CMD ["/bin/bash", "-l"]

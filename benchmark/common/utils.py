@@ -1,4 +1,4 @@
-"""Shared IO, telemetry, statistics, and reporting helpers."""
+"""IO, telemetry, statistics, and reporting helpers shared by every runtime."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Iterable
+from typing import IO, Any, Callable, Iterable
 
 from .config import DATASET_SIZE, IMAGE_SIZE
 
@@ -135,7 +135,11 @@ class ResourceMonitor:
             self.samples.append(sample)
             self._stop.wait(self.interval_ms / 1000.0)
 
-    def stop(self, duration_seconds: float) -> dict[str, Any]:
+    def stop(
+        self, duration_seconds: float, since: float | None = None
+    ) -> dict[str, Any]:
+        """Stop sampling and aggregate; ``since`` drops samples taken before that
+        ``time.monotonic()`` timestamp (e.g. engine load in a subprocess)."""
         self._stop.set()
         if self._process and self._process.poll() is None:
             self._process.terminate()
@@ -143,6 +147,10 @@ class ResourceMonitor:
             self._thread.join(timeout=2.0)
         if self._process and self._process.poll() is None:
             self._process.kill()
+        if since is not None:
+            self.samples = [
+                sample for sample in self.samples if sample["sample_time"] >= since
+            ]
 
         def values(key: str) -> list[float]:
             return [sample[key] for sample in self.samples if key in sample]
@@ -173,6 +181,40 @@ class ResourceMonitor:
         }
 
 
+def load_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def run_logged(
+    command: list[str],
+    log_stream: IO[str] | None = None,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    on_line: Callable[[str], None] | None = None,
+) -> int:
+    """Run a command, mirroring its output to stdout and an optional log."""
+    print("$ " + " ".join(command), flush=True)
+    if log_stream is not None:
+        log_stream.write("$ " + " ".join(command) + "\n")
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        cwd=cwd,
+        env=env,
+    )
+    assert process.stdout is not None
+    for line in process.stdout:
+        print(line, end="", flush=True)
+        if log_stream is not None:
+            log_stream.write(line)
+        if on_line is not None:
+            on_line(line)
+    return process.wait()
+
+
 def workspace_root() -> Path:
     for candidate in Path(__file__).resolve().parents:
         if (candidate / "container").is_file() and (candidate / "docker").is_dir():
@@ -184,7 +226,7 @@ def _download(source: str, destination: Path) -> None:
     parsed = urllib.parse.urlparse(source)
     if parsed.scheme in {"http", "https"}:
         request = urllib.request.Request(
-            source, headers={"User-Agent": "foresight-vllm-benchmark/1.0"}
+            source, headers={"User-Agent": "foresight-benchmark/1.0"}
         )
         with urllib.request.urlopen(request, timeout=60) as response:
             destination.write_bytes(response.read())
@@ -235,7 +277,7 @@ def _read_text(path: str) -> str | None:
         return None
 
 
-def _command_output(command: list[str]) -> str | None:
+def command_output(command: list[str]) -> str | None:
     try:
         return subprocess.run(
             command, check=False, capture_output=True, text=True, timeout=10
@@ -299,7 +341,7 @@ def device_metadata() -> dict[str, Any]:
     power_mode = (
         f"NV Power Mode: {power_mode_name}\n{power_mode_id or ''}".rstrip()
         if power_mode_name
-        else _command_output(["nvpmodel", "-q"])
+        else command_output(["nvpmodel", "-q"])
     )
     return {
         "architecture": platform.machine(),
@@ -308,7 +350,7 @@ def device_metadata() -> dict[str, Any]:
             f"{l4t_match.group(1)}.{l4t_match.group(2)}" if l4t_match else None
         ),
         "power_mode": power_mode,
-        "gpu": _command_output(
+        "gpu": command_output(
             ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"]
         ),
         "container_base": os.environ.get(
@@ -375,7 +417,9 @@ def _fmt(value: Any, digits: int = 2) -> str:
     return "" if value is None else f"{float(value):.{digits}f}"
 
 
-def write_reports(output_dir: Path, payload: dict[str, Any]) -> None:
+def write_reports(
+    output_dir: Path, payload: dict[str, Any], title: str = "vLLM Jetson benchmark"
+) -> None:
     write_json(output_dir / "results.json", payload)
     batch_count = int(payload["config"]["batches"])
     images_per_batch = int(payload["config"]["images_per_batch"])
@@ -405,7 +449,7 @@ def write_reports(output_dir: Path, payload: dict[str, Any]) -> None:
             )
 
     lines = [
-        "# vLLM Jetson benchmark", "", f"- Created: {payload['created_at']}",
+        f"# {title}", "", f"- Created: {payload['created_at']}",
         f"- Device: {payload['device'].get('product_model') or 'unknown'}",
         f"- L4T: {payload['device'].get('l4t_release') or 'unknown'}",
         f"- Power mode: `{(payload['device'].get('power_mode') or 'unknown').replace(chr(10), ' | ')}`",

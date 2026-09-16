@@ -1,4 +1,4 @@
-"""Configuration and command-line parsing for the vLLM benchmark."""
+"""Workload definition and command-line options shared by every runtime."""
 
 from __future__ import annotations
 
@@ -12,37 +12,6 @@ DEFAULT_MODELS = (
     "google/gemma-4-E2B-it",
     "ut-amrl/foresight-qwen3vl-2b-sft",
 )
-MODEL_FAMILY_PROFILES: dict[str, dict[str, Any]] = {
-    "qwen3.5": {
-        "prefixes": ("qwen/qwen3.5-",),
-        "engine_kwargs": {},
-    },
-    "qwen3vl": {
-        "prefixes": (
-            "qwen/qwen3-vl-",
-            "ut-amrl/foresight-qwen3vl-",
-        ),
-        "engine_kwargs": {},
-    },
-    "gemma4": {
-        "prefixes": ("google/gemma-4",),
-        "engine_kwargs": {
-            "mm_processor_kwargs": {"max_soft_tokens": 280},
-
-            # ---
-            # Gemma 4 uses two attention head dimensions:
-            #   - Sliding-attention layers: 256
-            #   - Full-attention layers: 523
-            # 
-            # When the backend is auto, vLLM selects FlashAttention. 
-            # It attempts FA4, Thor build reports that FA4 cannot handle Gemma’s required 512-dimensional heads. 
-            # It then falls back to FA2, which supports at most 256, causing the following runtime error:
-            # `FlashAttention forward only supports head dimension at most 256`
-            # ---
-            "attention_config": {"backend": "TRITON_ATTN"}, # FlashAttention forward only supports head dimension at most 256 (https://github.com/vllm-project/vllm/issues/40677)
-        },
-    },
-}
 COCO_BASE_URL = "https://s3.amazonaws.com/images.cocodataset.org/val2017"
 COCO_IMAGE_NAMES = (
     "000000000139.jpg", "000000000285.jpg", "000000000632.jpg", "000000000724.jpg",
@@ -62,7 +31,8 @@ MAX_BATCHES = 10
 DEFAULT_BATCHES = 10
 DEFAULT_IMAGES_PER_BATCH = 4
 IMAGE_SIZE = (336, 224)  # width, height
-DEFAULT_KV_CACHE_MEMORY_BYTES = 4 * 1024**3
+DEFAULT_MAX_TOKENS = 512
+DEFAULT_MAX_MODEL_LEN = 2560
 
 
 def build_prompt(images_per_batch: int) -> str:
@@ -138,10 +108,21 @@ def validate_batch_settings(
     return total_images
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Offline vLLM benchmark using 40 COCO images on Jetson Orin and Thor."
+def model_family(model: str, profiles: dict[str, dict[str, Any]]) -> str | None:
+    """Return the first family whose prefixes match ``model`` (case-insensitive)."""
+    lowered = model.lower()
+    return next(
+        (
+            family
+            for family, profile in profiles.items()
+            if any(lowered.startswith(prefix) for prefix in profile["prefixes"])
+        ),
+        None,
     )
+
+
+def add_workload_arguments(parser: argparse.ArgumentParser) -> None:
+    """Register the options every runtime shares (models, images, batches, limits)."""
     parser.add_argument("--models", nargs="+", default=list(DEFAULT_MODELS))
     parser.add_argument("--images", nargs="+", default=list(DEFAULT_IMAGES))
     parser.add_argument(
@@ -154,7 +135,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--images-per-batch",
         type=int,
         default=DEFAULT_IMAGES_PER_BATCH,
-        help="Number of images in each batch; batches × images must be at most 40",
+        help=f"Number of images in each batch; batches × images must be at most {DATASET_SIZE}",
     )
     parser.add_argument("--warmup-runs", type=int, default=1)
     parser.add_argument(
@@ -164,20 +145,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Number of full configured-workload passes (default: 1)",
     )
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--max-tokens", type=int, default=512)
-    parser.add_argument("--max-model-len", type=int, default=2560)
-    parser.add_argument("--gpu-memory-utilization", type=float, default=0.5)
-    parser.add_argument(
-        "--structured-output",
-        action="store_true",
-        help="Enable JSON Schema constrained decoding (default: disabled)",
-    )
-    parser.add_argument(
-        "--kv-cache-memory-bytes",
-        type=int,
-        default=DEFAULT_KV_CACHE_MEMORY_BYTES,
-        help="Manually size the KV cache and bypass vLLM memory profiling",
-    )
+    parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    parser.add_argument("--max-model-len", type=int, default=DEFAULT_MAX_MODEL_LEN)
     parser.add_argument(
         "--no-reclaim-memory",
         action="store_false",
@@ -187,11 +156,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.set_defaults(reclaim_memory=True)
     parser.add_argument("--worker-model", help=argparse.SUPPRESS)
     parser.add_argument("--config", help=argparse.SUPPRESS)
-    args = parser.parse_args(argv)
+
+
+def validate_workload_arguments(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> bool:
+    """Validate shared options; returns True when running in worker mode."""
     if args.worker_model:
         if not args.config:
             parser.error("--config is required in worker mode")
-        return args
+        return True
     if len(args.images) != DATASET_SIZE:
         parser.error(f"--images requires exactly {DATASET_SIZE} paths or URLs")
     try:
@@ -202,19 +176,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--warmup-runs must be >= 0 and --runs must be >= 1")
     if args.max_tokens < 1 or args.max_model_len < 1:
         parser.error("token limits must be positive")
-    if not 0 < args.gpu_memory_utilization < 1:
-        parser.error("--gpu-memory-utilization must be between 0 and 1")
-    if args.kv_cache_memory_bytes is not None and args.kv_cache_memory_bytes < 1:
-        parser.error("--kv-cache-memory-bytes must be positive")
-    return args
+    return False
 
 
-def build_run_config(
+def build_workload_config(
     args: argparse.Namespace,
     images: list[dict[str, Any]],
     output_dir: Path,
+    structured_output: bool = False,
 ) -> dict[str, Any]:
-    """Build the serializable configuration shared with worker processes."""
+    """Serializable workload shared with worker processes; runtimes extend it."""
     return {
         "output_dir": str(output_dir),
         "models": args.models,
@@ -223,22 +194,15 @@ def build_run_config(
         "batches": args.batches,
         "images_per_batch": args.images_per_batch,
         "prompt": build_prompt(args.images_per_batch),
-        "structured_output": args.structured_output,
+        "structured_output": structured_output,
         "output_schema": (
-            build_output_schema(args.images_per_batch)
-            if args.structured_output
-            else None
+            build_output_schema(args.images_per_batch) if structured_output else None
         ),
         "warmup_runs": args.warmup_runs,
         "runs": args.runs,
         "max_tokens": args.max_tokens,
         "max_model_len": args.max_model_len,
-        "gpu_memory_utilization": args.gpu_memory_utilization,
-        "tensor_parallel_size": 1,
-        "kv_cache_memory_bytes": args.kv_cache_memory_bytes,
         "reclaim_memory": args.reclaim_memory,
         "batch_size": args.images_per_batch,
         "max_num_seqs": 1,
-        "enable_prefix_caching": False,
-        "mm_processor_cache_gb": 0,
     }
